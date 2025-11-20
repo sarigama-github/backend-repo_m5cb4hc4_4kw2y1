@@ -1,6 +1,8 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Literal
 
 app = FastAPI()
 
@@ -12,13 +14,66 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class ChatRequest(BaseModel):
+    message: str
+    history: List[dict] | None = None
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    messages: List[ChatMessage]
+
+
 @app.get("/")
 def read_root():
     return {"message": "Hello from FastAPI Backend!"}
 
+
 @app.get("/api/hello")
 def hello():
     return {"message": "Hello from the backend API!"}
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat(req: ChatRequest):
+    """
+    Dummy chat endpoint that simulates an assistant reply.
+    It reflects the user's message with a friendly, helpful tone and a short tip.
+    """
+    user_msg = (req.message or "").strip()
+
+    if not user_msg:
+        assistant_reply = (
+            "Hi! I'm a lightweight demo assistant. Ask me anything, or say hello to get started."
+        )
+    else:
+        # Simple playful transformation to feel interactive without external deps
+        reversed_hint = user_msg[::-1][:40]
+        assistant_reply = (
+            f"You said: '{user_msg}'. Here's a quick thought: focus on one clear step next. "
+            f"(fun hint: '{reversed_hint}' backwards)."
+        )
+
+    history: List[ChatMessage] = []
+    if req.history:
+        # Keep only last few messages for brevity, validate roles if present
+        for m in req.history[-8:]:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role in ("user", "assistant", "system"):
+                history.append(ChatMessage(role=role, content=content))
+
+    history.append(ChatMessage(role="user", content=user_msg))
+    history.append(ChatMessage(role="assistant", content=assistant_reply))
+
+    return ChatResponse(reply=assistant_reply, messages=history)
+
 
 @app.get("/test")
 def test_database():
